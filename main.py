@@ -160,6 +160,11 @@ def reject_opportunity():
 
 # ==================== RUN SERVER ====================
 
+# OLD LINE:
+# app.run(debug=True, port=FLASK_PORT)
+
+# NEW REPLACEMENT LINES:
 if __name__ == "__main__":
     logger.info("Starting Internship Tracker Server...")
-    app.run(debug=True, port=FLASK_PORT)
+    # Force the app to listen externally to all cloud gateway routes
+    app.run(host="0.0.0.0", port=FLASK_PORT, debug=True)
