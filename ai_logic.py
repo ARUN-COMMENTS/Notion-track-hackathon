@@ -1,4 +1,3 @@
-
 import json
 import logging
 from google import genai
@@ -16,20 +15,17 @@ except Exception as e:
 
 class AIProcessor:
     def __init__(self, api_key=None):
-        # The client uses the global config key directly or an injected override
         self.client = ai_client
     
     def process_job_posting(self, job_url, job_text, student_profile=None):
         """
-        Uses Gemini 3.6 to:
-        1. Extract key details (company, role, deadline, location)
-        2. Check if it matches student's interests
-        3. Draft a follow-up message
+        Uses Gemini 3.6 to process and extract structural parameters from postings.
         """
         if not self.client:
             logger.error("Gemini client is uninitialized.")
             return {"error": "AI Client Offline"}
 
+        # FIXED: Doubled outer curly braces to escape Python f-string rendering syntax
         prompt = f"""
 Analyze this job posting and return a JSON response with the following structure:
 {{
@@ -53,20 +49,18 @@ Job Description:
 Student Profile (if available):
 {student_profile or "Not provided - prioritize all relevant opportunities"}
 
-Return ONLY valid JSON, no other text.
+Return ONLY valid JSON, no other text. Ensure "priority" matches exactly one of the capitalization options: High, Medium, or Low.
 """
         
         try:
-            # Shifted cleanly to stable gemini-3.6-flash API
             response = self.client.models.generate_content(
                 model='gemini-3.6-flash',
                 contents=prompt,
             )
             
-            # Clean off any potential markdown wrappers if the AI attaches them
             response_text = response.text.strip().replace("```json", "").replace("```", "")
             result = json.loads(response_text)
-            logger.info(f"AI processed: {result['company']} - {result['role']}")
+            logger.info(f"AI processed: {result.get('company', 'Unknown')} - {result.get('role', 'Unknown')}")
             return result
         
         except json.JSONDecodeError:
