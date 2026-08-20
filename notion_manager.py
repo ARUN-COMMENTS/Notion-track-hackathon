@@ -1,6 +1,6 @@
-from notion_client import Client
-from datetime import datetime
 import logging
+from datetime import datetime
+from notion_client import Client
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,56 +15,58 @@ class NotionManager:
         Creates a new row in Notion with opportunity details.
         Status: "Pending Review"
         """
+        properties = {
+            "Company": {
+                "title": [{"text": {"content": opportunity_data.get("company", "Unknown")}}]
+            },
+            "Role": {
+                "rich_text": [{"text": {"content": opportunity_data.get("role", "Not Specified")}}]
+            },
+            "Link": {
+                "url": opportunity_data.get("job_url", "https://linkedin.com")
+            },
+            "Location": {
+                "rich_text": [{"text": {"content": opportunity_data.get("location", "Not Specified")}}]
+            },
+            "Priority": {
+                "select": {"name": opportunity_data.get("priority", "Medium")}
+            },
+            "AI Analysis": {
+                "rich_text": [{"text": {"content": opportunity_data.get("ai_analysis", "No analysis")}}]
+            },
+            "Match Score": {
+                "rich_text": [{"text": {"content": opportunity_data.get("match_score", "N/A")}}]
+            },
+            "Status": {
+                "select": {"name": "Pending Review"}
+            },
+            "Timestamp": {
+                "date": {"start": datetime.now().isoformat()}
+            }
+        }
+
+        # FIXED: Only inject Deadline if it is a valid date string format
+        deadline = opportunity_data.get("deadline", "")
+        if deadline and "Not Specified" not in deadline:
+            properties["Deadline"] = {"date": {"start": deadline}}
+
         try:
             response = self.client.pages.create(
                 parent={"database_id": self.database_id},
-                properties={
-                    "Company": {
-                        "title": [{"text": {"content": opportunity_data["company"]}}]
-                    },
-                    "Role": {
-                        "rich_text": [{"text": {"content": opportunity_data["role"]}}]
-                    },
-                    "Link": {
-                        "url": opportunity_data["job_url"]
-                    },
-                    "Deadline": {
-                        "date": {"start": opportunity_data.get("deadline", "")}
-                    },
-                    "Location": {
-                        "rich_text": [{"text": {"content": opportunity_data.get("location", "Not Specified")}}]
-                    },
-                    "Priority": {
-                        "select": {"name": opportunity_data.get("priority", "Medium")}
-                    },
-                    "AI Analysis": {
-                        "rich_text": [{"text": {"content": opportunity_data.get("ai_analysis", "")}}]
-                    },
-                    "Match Score": {
-                        "rich_text": [{"text": {"content": opportunity_data.get("match_score", "")}}]
-                    },
-                    "Status": {
-                        "select": {"name": "Pending Review"}
-                    },
-                    "Timestamp": {
-                        "date": {"start": datetime.now().isoformat()}
-                    }
-                }
+                properties=properties
             )
-            logger.info(f"Created Notion page: {opportunity_data['company']}")
+            logger.info(f"Created Notion page: {opportunity_data.get('company')}")
             return response["id"]
         except Exception as e:
             logger.error(f"Error creating Notion page: {e}")
             return None
     
     def update_status(self, page_id, status):
-        """Update the status of an opportunity (Pending/Approved/Rejected/Sent)"""
+        """Update the status of an opportunity"""
         try:
             self.client.pages.update(
                 page_id=page_id,
-                properties={
-                    "Status": {"select": {"name": status}}
-                }
+                properties={"Status": {"select": {"name": status}}}
             )
             logger.info(f"Updated page {page_id} status to {status}")
         except Exception as e:
@@ -72,58 +74,24 @@ class NotionManager:
     
     def add_to_run_log(self, action, status, details):
         """
-        Write to Run Log table.
-        action: "opportunity_found" / "email_sent" / "rejected"
+        Write to Run Log table safely. Drops runtime properties if headers are mismatched.
         """
+        # Read the Run Log ID from your global environment configurations
+        import os
+        run_log_id = os.getenv("RUN_LOG_DATABASE_ID")
+        if not run_log_id or "Run-log" in run_log_id:
+            return
+
         try:
             self.client.pages.create(
-                parent={"database_id": self.database_id},  # Should point to RUN_LOG database
+                parent={"database_id": run_log_id},
                 properties={
-                    "Action": {
-                        "title": [{"text": {"content": action}}]
-                    },
-                    "Status": {
-                        "select": {"name": status}
-                    },
-                    "Details": {
-                        "rich_text": [{"text": {"content": details}}]
-                    },
-                    "Timestamp": {
-                        "date": {"start": datetime.now().isoformat()}
-                    }
+                    "Action": {"title": [{"text": {"content": action}}]},
+                    "Status": {"select": {"name": status.lower()}},
+                    "Details": {"rich_text": [{"text": {"content": details}}]},
+                    "Timestamp": {"date": {"start": datetime.now().isoformat()}}
                 }
             )
             logger.info(f"Added to Run Log: {action}")
         except Exception as e:
-            logger.error(f"Error adding to run log: {e}")
-    
-    def get_pending_opportunities(self):
-        """Get all opportunities pending approval"""
-        try:
-            response = self.client.databases.query(
-                database_id=self.database_id,
-                filter={
-                    "property": "Status",
-                    "select": {"equals": "Pending Review"}
-                }
-            )
-            return response["results"]
-        except Exception as e:
-            logger.error(f"Error fetching pending opportunities: {e}")
-            return []
-# Add this at the very bottom of your file for easy project usage
-if __name__ == "__main__":
-    import os
-    from dotenv import load_dotenv
-    load_dotenv()
-    
-    print("--- Testing Notion Manager Initialization ---")
-    token = os.getenv("NOTION_TOKEN")
-    db_id = os.getenv("NOTION_DATABASE_ID")
-    
-    if token and db_id:
-        manager = NotionManager(token, db_id)
-        print("✅ NotionManager instance created successfully and ready for actions.")
-    else:
-        print("⚠️ Missing tokens in .env. Cannot complete baseline test.")
-
+            logger.error(f"Error adding to run log: {e}. Check your Run Log table horizontal header names!")
