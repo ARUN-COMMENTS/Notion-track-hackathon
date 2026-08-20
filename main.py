@@ -1,10 +1,13 @@
 import logging
 from flask import Flask, jsonify, request
+from dotenv import load_dotenv
+
+# CRITICAL: Force environment loading immediately before modules load
+load_dotenv()
+
 from ai_logic import AIProcessor
 from config import FLASK_PORT, GMAIL_ADDRESS, GMAIL_PASSWORD, NOTION_DATABASE_ID, NOTION_TOKEN
 from email_sender import EmailSender
-
-# UPDATED: Importing from the correct renamed module file
 from notion_manager import NotionManager
 
 logging.basicConfig(level=logging.INFO)
