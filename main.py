@@ -162,6 +162,75 @@ def reject_opportunity():
 
 # OLD LINE:
 # app.run(debug=True, port=FLASK_PORT)
+@app.route("/check-approvals", methods=["GET"])
+def check_approvals():
+    """
+    Periodically checks for human-approved opportunities in Notion,
+    drafts custom outreach emails with Gemini, and fires them via SMTP.
+    """
+    try:
+        # Fetch pages currently matching the 'Pending Review' filter layer
+        pending = notion_manager.get_pending_opportunities()
+        checked_count = 0
+        sent_count = 0
+        
+        for page in pending:
+            properties = page.get("properties", {})
+            
+            # Safely navigate to the current status choice tag name string
+            status_obj = properties.get("Status", {}).get("select", {})
+            status = status_obj.get("name") if status_obj else "Pending Review"
+            
+            # If a human has manually toggled the tag inside the Notion dashboard grid
+            if status == "Approved":
+                checked_count += 1
+                
+                # Extract structural property parameters defensively
+                company_list = properties.get("Company", {}).get("title", [])
+                company = company_list[0]["text"]["content"] if company_list else "Unknown Company"
+                
+                role_list = properties.get("Role", {}).get("rich_text", [])
+                role = role_list[0]["text"]["content"] if role_list else "Internship Position"
+                
+                job_url = properties.get("Link", {}).get("url", "https://linkedin.com")
+                
+                # UPDATED: Direct notifications back to your actual target email account variables
+                student_email = GMAIL_ADDRESS  
+                
+                opportunity_data = {
+                    "company": company,
+                    "role": role,
+                    "job_url": job_url,
+                    "location": "See posting listing details",
+                    "deadline": "Review timeline on page layout",
+                    "key_requirements": ["Python development scripting", "API routing infrastructure"]
+                }
+                
+                # Leverage Gemini 3.6 to compile a professional outreach email body layout
+                email_body = ai_processor.draft_email(opportunity_data)
+                
+                # Route the generated package out through Gmail secure SMTP servers
+                success = email_sender.send_opportunity_email(student_email, opportunity_data, email_body)
+                
+                if success:
+                    # Update status tag to 'Sent' and update background diagnostic steps logs
+                    notion_manager.update_status(page["id"], "Sent")
+                    notion_manager.add_to_run_log(
+                        "email_sent",
+                        "success",
+                        f"Automated approval notification message pushed directly to {student_email}"
+                    )
+                    sent_count += 1
+        
+        return jsonify({
+            "status": "Check approval pipeline process executed successfully",
+            "opportunities_checked": checked_count,
+            "emails_dispatched": sent_count
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error checking approvals layout configurations: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # NEW REPLACEMENT LINES:
 if __name__ == "__main__":
